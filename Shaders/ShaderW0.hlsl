@@ -4,17 +4,12 @@
  * constant buffer 정의
  * register(b#)를 사용하여 버퍼 레지스터 슬롯을 지정할 수 있다.
  */
-cbuffer constants : register(b0)
-{
-    float3 Offset;
-    float3 Scale;
-}
-
-cbuffer FMatrix : register(b1)
+cbuffer FMatrix : register(b0)
 {
     matrix World;
     matrix View;
     matrix Proj;
+    float4 UUIDColor;
 };
 
 struct VS_INPUT
@@ -50,6 +45,11 @@ PS_INPUT mainVS(VS_INPUT input)
     output.color = input.color;
 
     return output;
+}
+
+float4 UUIDPS(PS_INPUT input):SV_TARGET{
+    
+    return UUIDColor;
 }
 
 float4 mainPS(PS_INPUT input) : SV_TARGET

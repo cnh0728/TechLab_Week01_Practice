@@ -84,14 +84,10 @@ void UObject::FixedUpdate(float FixedTime)
 	Velocity.Y += Gravity * FixedTime;
 }
 
-void UObject::UpdateConstant(const URenderer& Renderer) const
-{
-	Renderer.UpdateConstant(Location, Radius);
-}
 
-void UObject::UpdateConstantView(const URenderer& Renderer, const UCamera& Camera) const
+void UObject::UpdateConstantView(const URenderer& Renderer, const UCamera& Camera, DirectX::XMFLOAT4 UUIDColor) const
 {
-	Renderer.UpdateConstantView(*this, Camera);
+	Renderer.UpdateConstantView(*this, Camera, UUIDColor);
 }
 
 void UObject::HandleWallCollision(const FVector& WallNormal)

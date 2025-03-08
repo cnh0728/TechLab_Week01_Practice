@@ -2,14 +2,20 @@
 
 #include <cstdint>
 
+#include "Enum.h"
 #include "Core/Math/Vector.h"
+
+namespace DirectX
+{
+	struct XMFLOAT4;
+}
 
 class UObject
 {
 public:
-	static uint8_t UUID_GEN;
+	static int UUID_GEN;
 	
-	uint8_t UUID;
+	int UUID;
 	
 	FVector Location;
 	FVector Rotation;
@@ -37,7 +43,7 @@ public:
 
 	void UpdateConstant(const class URenderer& Renderer) const;
 
-	void UpdateConstantView(const URenderer& Renderer, const class UCamera& Camera) const;
+	void UpdateConstantView(const URenderer& Renderer, const class UCamera& Camera, DirectX::XMFLOAT4 UUIDColor) const;
 	
 	void HandleWallCollision(const FVector& WallNormal);
 

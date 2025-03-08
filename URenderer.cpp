@@ -37,13 +37,17 @@ void URenderer::CreateShader()
      */
     ID3DBlob* VertexShaderCSO;
     ID3DBlob* PixelShaderCSO;
-
+    ID3DBlob* UIDShaderCSO;
+    
     // 셰이더 컴파일 및 생성
     D3DCompileFromFile(L"Shaders/ShaderW0.hlsl", nullptr, nullptr, "mainVS", "vs_5_0", 0, 0, &VertexShaderCSO, nullptr);
     Device->CreateVertexShader(VertexShaderCSO->GetBufferPointer(), VertexShaderCSO->GetBufferSize(), nullptr, &SimpleVertexShader);
 
     D3DCompileFromFile(L"Shaders/ShaderW0.hlsl", nullptr, nullptr, "mainPS", "ps_5_0", 0, 0, &PixelShaderCSO, nullptr);
     Device->CreatePixelShader(PixelShaderCSO->GetBufferPointer(), PixelShaderCSO->GetBufferSize(), nullptr, &SimplePixelShader);
+
+    D3DCompileFromFile(L"Shaders/ShaderW0.hlsl", nullptr, nullptr, "UUIDPS", "ps_5_0", 0, 0, &UIDShaderCSO, nullptr);
+    Device->CreatePixelShader(UIDShaderCSO->GetBufferPointer(), UIDShaderCSO->GetBufferSize(), nullptr, &UIDPixelShader);
 
     // 입력 레이아웃 정의 및 생성
     D3D11_INPUT_ELEMENT_DESC Layout[] =
@@ -56,6 +60,7 @@ void URenderer::CreateShader()
 
     VertexShaderCSO->Release();
     PixelShaderCSO->Release();
+    UIDShaderCSO->Release();
 
     // 정점 하나의 크기를 설정 (바이트 단위)
     Stride = sizeof(FVertexSimple);
@@ -79,6 +84,12 @@ void URenderer::ReleaseShader()
         SimpleVertexShader->Release();
         SimpleVertexShader = nullptr;
     }
+
+    if (UIDPixelShader)
+    {
+        UIDPixelShader->Release();
+        UIDPixelShader = nullptr;
+    }
 }
 
 void URenderer::CreateConstantBuffer()
@@ -89,18 +100,10 @@ void URenderer::CreateConstantBuffer()
     ConstantBufferDesc.ByteWidth = sizeof(FConstants) + 0xf & 0xfffffff0;  // 16byte의 배수로 올림
     ConstantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;            // CPU에서 쓰기 접근이 가능하게 설정
 
-    Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantBuffer);
-
     Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantWorldBuffer);
 }
 void URenderer::ReleaseConstantBuffer()
 {
-    if (ConstantBuffer)
-    {
-    	ConstantBuffer->Release();
-    	ConstantBuffer = nullptr;
-    }
-
     if (ConstantWorldBuffer)
     {
         ConstantWorldBuffer->Release();
@@ -108,10 +111,52 @@ void URenderer::ReleaseConstantBuffer()
     }
 }
 
+void URenderer::CreatePickingShader()
+{
+    D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
+    ZeroMemory(&depthStencilDesc, sizeof(depthStencilDesc));
+
+    depthStencilDesc.DepthEnable = TRUE;
+    depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+
+    Device->CreateDepthStencilState(&depthStencilDesc, &DepthStencilState);
+
+    D3D11_RENDER_TARGET_BLEND_DESC rtbd;
+    ZeroMemory(&rtbd, sizeof(rtbd));
+    rtbd.RenderTargetWriteMask = 0; // 모든 색상 채널 쓰기 비활성화
+
+    D3D11_BLEND_DESC blendDesc;
+    ZeroMemory(&blendDesc, sizeof(blendDesc));
+    blendDesc.RenderTarget[0] = rtbd;
+
+    Device->CreateBlendState(&blendDesc, &BlendState);
+}
+
 /** 스왑 체인의 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력 */
 void URenderer::SwapBuffer() const
 {
     SwapChain->Present(1, 0); // SyncInterval: VSync 활성화 여부
+}
+
+void URenderer::PreparePicking()
+{
+    D3D11_RENDER_TARGET_BLEND_DESC rtbd;
+    ZeroMemory(&rtbd, sizeof(rtbd));
+    rtbd.RenderTargetWriteMask = 0; // 모든 색상 채널 쓰기 비활성화
+
+    D3D11_BLEND_DESC blendDesc;
+    ZeroMemory(&blendDesc, sizeof(blendDesc));
+    blendDesc.RenderTarget[0] = rtbd;
+
+    Device->CreateBlendState(&blendDesc, &BlendState);
+    
+    DeviceContext->OMSetBlendState(BlendState, nullptr, 0xFFFFFFFF);
+}
+
+void URenderer::PrepareMain()
+{
+    DeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 }
 
 /** 렌더링 파이프라인을 준비 합니다. */
@@ -127,15 +172,15 @@ void URenderer::Prepare() const
     // Rasterization할 Viewport를 설정 
     DeviceContext->RSSetViewports(1, &ViewportInfo);
     DeviceContext->RSSetState(RasterizerState);
-    
-    /**
-     * OutputMerger 설정
-     * 렌더링 파이프라인의 최종 단계로써, 어디에 그릴지(렌더 타겟)와 어떻게 그릴지(블렌딩)를 지정
-     */
-    DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, nullptr);
-    DeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
 
+    /**
+* OutputMerger 설정
+* 렌더링 파이프라인의 최종 단계로써, 어디에 그릴지(렌더 타겟)와 어떻게 그릴지(블렌딩)를 지정
+*/
+    DeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, nullptr);
     DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, DepthStencilView);
+
 }
 
 void URenderer::PrepareLine()
@@ -144,6 +189,18 @@ void URenderer::PrepareLine()
 }
 
 
+void URenderer::PreparePickingShader() const
+{
+    DeviceContext->VSSetShader(SimpleVertexShader, nullptr, 0);
+    DeviceContext->PSSetShader(UIDPixelShader, nullptr, 0);
+    DeviceContext->IASetInputLayout(SimpleInputLayout);
+
+    if (ConstantWorldBuffer)
+    {
+        DeviceContext->VSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
+        DeviceContext->PSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
+    }
+}
 /** 셰이더를 준비 합니다. */
 void URenderer::PrepareShader() const
 {
@@ -151,16 +208,11 @@ void URenderer::PrepareShader() const
     DeviceContext->VSSetShader(SimpleVertexShader, nullptr, 0);
     DeviceContext->PSSetShader(SimplePixelShader, nullptr, 0);
     DeviceContext->IASetInputLayout(SimpleInputLayout);
-
-    // 버텍스 쉐이더에 상수 버퍼를 설정
-    if (ConstantBuffer)
-    {
-        DeviceContext->VSSetConstantBuffers(0, 1, &ConstantBuffer);
-    }
-
+    
     if (ConstantWorldBuffer)
     {
-        DeviceContext->VSSetConstantBuffers(1, 1, &ConstantWorldBuffer);
+        DeviceContext->VSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
+        DeviceContext->PSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
     }
 }
 
@@ -210,32 +262,7 @@ void URenderer::ReleaseVertexBuffer(ID3D11Buffer* pBuffer) const
     pBuffer->Release();
 }
 
-/** Constant Data를 업데이트 합니다. */
-void URenderer::UpdateConstant(const FVector& Offset, FVector Scale) const
-{
-    if (!ConstantBuffer) return;
-
-    D3D11_MAPPED_SUBRESOURCE ConstantBufferMSR;
-
-    // 상수 버퍼를 CPU 메모리에 매핑
-    // D3D11_MAP_WRITE_DISCARD는 이전 내용을 무시하고 새로운 데이터로 덮어쓰기 위해 사용
-    DeviceContext->Map(ConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ConstantBufferMSR);
-    {
-        // 매핑된 메모리를 FConstants 구조체로 캐스팅
-        FConstants* Constants = static_cast<FConstants*>(ConstantBufferMSR.pData);
-        Constants->Offset = Offset;
-        Constants->Scale = Scale;
-    }
-    DeviceContext->Unmap(ConstantBuffer, 0);
-}
-
-/** Constant Data를 업데이트 합니다. */
-void URenderer::UpdateConstant(const FVector& Offset, float Scale) const
-{
-    UpdateConstant(Offset, FVector(Scale,Scale,Scale));
-}
-
-void URenderer::UpdateConstantView(UObject Target, UCamera Camera) const
+void URenderer::UpdateConstantView(UObject Target, UCamera Camera, DirectX::XMFLOAT4 UUIDColor) const
 {
     if (!ConstantWorldBuffer) return;
 
@@ -253,12 +280,15 @@ void URenderer::UpdateConstantView(UObject Target, UCamera Camera) const
 
     DirectX::XMMATRIX ProjMatrix = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, 1, 0.1f, 100.0f);
 
+    UUIDColor = DirectX::XMFLOAT4(UUIDColor.x/255.0f, UUIDColor.y/255.0f, UUIDColor.z/255.0f, UUIDColor.w/255.0f);
+    
     DeviceContext->Map(ConstantWorldBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ConstantBufferMSR);
     {
         FMatrixConstants* Constants = static_cast<FMatrixConstants*>(ConstantBufferMSR.pData);
         Constants->World = DirectX::XMMatrixTranspose(WorldMatrix);
         Constants->View = DirectX::XMMatrixTranspose(ViewMatrix);
         Constants->Proj = DirectX::XMMatrixTranspose(ProjMatrix);
+        // Constants->UUIDColor = UUIDColor;
     }
     DeviceContext->Unmap(ConstantWorldBuffer, 0);
 }
@@ -396,6 +426,77 @@ void URenderer::ReleaseRasterizerState()
         RasterizerState->Release();
         RasterizerState = nullptr;
     }
+}
+
+// void URenderer::CreateStagingTexture()
+// {
+//     D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
+//     ZeroMemory(&depthStencilDesc, sizeof(depthStencilDesc));
+//
+//     depthStencilDesc.DepthEnable = TRUE;
+//     depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+//     depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+//
+//     ID3D11DepthStencilState* depthStencilState;
+//     Device->CreateDepthStencilState(&depthStencilDesc, &depthStencilState);
+// }
+//
+// void URenderer::ReleaseStagingTexture()
+// {
+//     if (StagingTexture)
+//     {
+//         StagingTexture->Release();
+//         StagingTexture = nullptr;
+//     }
+//     if (BackBuffer)
+//     {
+//         BackBuffer->Release();
+//         BackBuffer = nullptr;
+//     }
+// }
+
+DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
+{
+    // 백 버퍼 가져오기
+    ID3D11Texture2D* backBuffer;
+    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+
+    // 스테이징 텍스처 생성 (CPU 읽기 가능)
+    D3D11_TEXTURE2D_DESC desc;
+    backBuffer->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    ID3D11Texture2D* stagingTexture;
+    Device->CreateTexture2D(&desc, nullptr, &stagingTexture);
+
+    // 백 버퍼 → 스테이징 텍스처 복사
+    DeviceContext->CopyResource(stagingTexture, backBuffer);
+
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    DeviceContext->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
+
+    // 픽셀 좌표 계산 (클릭 위치 기반)
+    UINT x = MPos.X;
+    UINT y = MPos.Y;
+    UINT pixelIndex = y * mapped.RowPitch / 4 + x; // 4 bytes per pixel (RGBA)
+
+    BYTE* pixels = (BYTE*)mapped.pData;
+    // RGBA 값 추출
+    DirectX::XMFLOAT4 color = {
+        static_cast<float>(pixels[pixelIndex * 4 + 0]),
+        static_cast<float>(pixels[pixelIndex * 4 + 1]),
+        static_cast<float>(pixels[pixelIndex * 4 + 2]),
+        static_cast<float>(pixels[pixelIndex * 4 + 3]),
+    };
+    // 매핑 해제
+    DeviceContext->Unmap(stagingTexture, 0);
+    
+    stagingTexture->Release();
+    backBuffer->Release();
+    
+    return color;
 }
 
 void URenderer::CreateDepthStencilBuffer(FVector WindowSize)

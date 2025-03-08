@@ -1,4 +1,5 @@
-﻿#include <memory>
+﻿#include <iostream>
+#include <memory>
 #include <Windows.h>
 
 #include "ImGui/imgui.h"
@@ -11,6 +12,23 @@
 #include "URenderer.h"
 #include "PrimitiveVertices.h"
 #include "UObject.h"
+
+DirectX::XMFLOAT4 UUIDToFLOAT4(int UUID)
+{
+	float a = (UUID >> 24) & 0xff;
+	float b = (UUID >> 16) & 0xff;
+	float g = (UUID >> 8) & 0xff;
+	float r = UUID & 0xff;
+	
+	DirectX::XMFLOAT4 color = {r, g, b, a};
+    
+	return color;
+}
+
+int FLOAT4ToUUID(DirectX::XMFLOAT4 f)
+{
+	return (static_cast<int>(f.w)<<24) | (static_cast<int>(f.z)<<16) | (static_cast<int>(f.y)<<8) | (static_cast<int>(f.x));
+}
 
 FVector GetWndWH(HWND hWnd)
 {
@@ -91,7 +109,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 float UObject::Gravity = 9.81f;
-uint8_t UObject::UUID_GEN = 0;
+int UObject::UUID_GEN = 0;
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nShowCmd)
 {
@@ -118,7 +136,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         nullptr, nullptr, hInstance, nullptr
     );
 #pragma endregion Init Window
+	AllocConsole(); // 콘솔 창 생성
 
+	// 표준 출력 및 입력을 콘솔과 연결
+	freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+	freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+
+	std::cout << "Debug Console Opened!" << '\n';
 #pragma region Init Renderer & ImGui
     // 렌더러 초기화
     URenderer Renderer;
@@ -126,7 +150,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     Renderer.CreateShader();
     Renderer.CreateConstantBuffer();
 	Renderer.CreateDepthStencilBuffer(GetWndWH(hWnd));
-    // ImGui 초기화
+	// ImGui 초기화
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -191,6 +215,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         // 누적 시간 추가
         Accumulator += DeltaTime;
 
+    	InputSystem::Get().ExpireOnceMouse();
+    	
         // 메시지(이벤트) 처리
         MSG msg;
         while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -244,8 +270,24 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
         // 렌더링 준비 작업
         Renderer.Prepare();
-        Renderer.PrepareShader();
+    	
+    	// Renderer.PrepareMain();
+    	Renderer.PrepareShader();
+    	// for (int i = 0; i < ArrSize; ++i)
+    	// {
+    	// 	RECT dRect;
+    	// 	int dWidth = 100 , dHeight = 100;
+    	// 	if (GetClientRect(hWnd , &dRect)) {
+    	// 		dWidth = dRect.right - dRect.left;
+    	// 		dHeight = dRect.bottom - dRect.top;
+    	// 	}
+    	// 	
+    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(Balls[i]->UUID));
+    	// 	Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    	// }
 
+    	Renderer.PreparePickingShader();
+    	Renderer.PreparePicking();
     	for (int i = 0; i < ArrSize; ++i)
     	{
     		RECT dRect;
@@ -255,15 +297,28 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     			dHeight = dRect.bottom - dRect.top;
     		}
     		
-    		// Balls[i]->UpdateConstant(Renderer);
-    		Balls[i]->UpdateConstantView(Renderer, *Camera);
+    		Balls[i]->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(Balls[i]->UUID));
     		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
     	}
+    	
+    	if (InputSystem::Get().GetMouseDown(false))
+    	{
+    		POINT pt;
+    		GetCursorPos(&pt);
+    		ScreenToClient(hWnd, &pt);
+    		
+    		DirectX::XMFLOAT4 color = Renderer.GetPixel(FVector(pt.x, pt.y, 0));
+	    
+    		std::cout << color.x << " ";
+    		std::cout << FLOAT4ToUUID(color) << "\n";
+    	}
+
+
 
 #pragma region DrawAxis
 
     	Renderer.PrepareLine();
-		zeroObject->UpdateConstantView(Renderer, *Camera);
+		zeroObject->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(0));
     	
 		Renderer.RenderPrimitive(VertexBufferAxisX, ARRAYSIZE(AxisXVertices));
     	Renderer.RenderPrimitive(VertexBufferAxisY, ARRAYSIZE(AxisYVertices));
@@ -366,8 +421,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
         // 현재 화면에 보여지는 버퍼와 그리기 작업을 위한 버퍼를 서로 교환
         Renderer.SwapBuffer();
-
-
         // FPS 제한
         double ElapsedTime;
         do
@@ -391,6 +444,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     Renderer.ReleaseConstantBuffer();
     Renderer.ReleaseShader();
     Renderer.Release();
-
+	FreeConsole();
     return 0;
 }
