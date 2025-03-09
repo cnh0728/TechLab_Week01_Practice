@@ -1,5 +1,7 @@
 ﻿#include "URenderer.h"
 
+#include <iostream>
+
 #include "UObject.h"
 
 /** Renderer를 초기화 합니다. */
@@ -7,7 +9,36 @@ void URenderer::Create(HWND hWindow)
 {
     CreateDeviceAndSwapChain(hWindow);
     CreateFrameBuffer();
+    CreatePickingTexture(hWindow);
     CreateRasterizerState();
+}
+
+void URenderer::CreatePickingTexture(HWND hWnd)
+{
+    RECT Rect;
+    int Width , Height;
+    if (GetClientRect(hWnd , &Rect)) {
+        Width = Rect.right - Rect.left;
+        Height = Rect.bottom - Rect.top;
+    }
+    
+    ID3D11Texture2D* PickingFrameBuffer;
+    D3D11_TEXTURE2D_DESC textureDesc = {};
+    textureDesc.Width = Width;
+    textureDesc.Height = Height;
+    textureDesc.MipLevels = 1;
+    textureDesc.ArraySize = 1;
+    textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.Usage = D3D11_USAGE_DEFAULT;
+    textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    Device->CreateTexture2D(&textureDesc, nullptr, &PickingFrameBuffer);
+
+    D3D11_RENDER_TARGET_VIEW_DESC PickingFrameBufferRTVDesc = {};
+    PickingFrameBufferRTVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;      // 색상 포맷
+    PickingFrameBufferRTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; // 2D 텍스처
+    
+    Device->CreateRenderTargetView(PickingFrameBuffer, &PickingFrameBufferRTVDesc, &PickingFrameBufferRTV);
 }
 
 /** Renderer에 사용된 모든 리소스를 해제합니다. */
@@ -94,13 +125,20 @@ void URenderer::ReleaseShader()
 
 void URenderer::CreateConstantBuffer()
 {
+    D3D11_BUFFER_DESC ConstantBufferDescView = {};
+    ConstantBufferDescView.Usage = D3D11_USAGE_DYNAMIC;                        // 매 프레임 CPU에서 업데이트 하기 위해
+    ConstantBufferDescView.BindFlags = D3D11_BIND_CONSTANT_BUFFER;             // 상수 버퍼로 설정
+    ConstantBufferDescView.ByteWidth = sizeof(FMatrixConstants) + 0xf & 0xfffffff0;  // 16byte의 배수로 올림
+    ConstantBufferDescView.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;            // CPU에서 쓰기 접근이 가능하게 설정
+    Device->CreateBuffer(&ConstantBufferDescView, nullptr, &ConstantWorldBuffer);
+
+    
     D3D11_BUFFER_DESC ConstantBufferDesc = {};
     ConstantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;                        // 매 프레임 CPU에서 업데이트 하기 위해
     ConstantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;             // 상수 버퍼로 설정
     ConstantBufferDesc.ByteWidth = sizeof(FUUIDConstants) + 0xf & 0xfffffff0;  // 16byte의 배수로 올림
     ConstantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;            // CPU에서 쓰기 접근이 가능하게 설정
 
-    Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantWorldBuffer);
     Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantUUIDBuffer);
 }
 void URenderer::ReleaseConstantBuffer()
@@ -147,17 +185,9 @@ void URenderer::SwapBuffer() const
 
 void URenderer::PreparePicking()
 {
-    D3D11_RENDER_TARGET_BLEND_DESC rtbd;
-    ZeroMemory(&rtbd, sizeof(rtbd));
-    rtbd.RenderTargetWriteMask = 0; // 모든 색상 채널 쓰기 비활성화
-
-    D3D11_BLEND_DESC blendDesc;
-    ZeroMemory(&blendDesc, sizeof(blendDesc));
-    blendDesc.RenderTarget[0] = rtbd;
-
-    Device->CreateBlendState(&blendDesc, &BlendState);
-    
-    DeviceContext->OMSetBlendState(BlendState, nullptr, 0xFFFFFFFF);
+    DeviceContext->ClearRenderTargetView(PickingFrameBufferRTV, PickingClearColor);
+    // 렌더 타겟 바인딩
+    DeviceContext->OMSetRenderTargets(1, &PickingFrameBufferRTV, nullptr);
 }
 
 void URenderer::PrepareMain()
@@ -183,8 +213,8 @@ void URenderer::Prepare() const
 * OutputMerger 설정
 * 렌더링 파이프라인의 최종 단계로써, 어디에 그릴지(렌더 타겟)와 어떻게 그릴지(블렌딩)를 지정
 */
+    
     DeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
-    DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, nullptr);
     DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, DepthStencilView);
 
 }
@@ -215,7 +245,7 @@ void URenderer::PrepareShader() const
 {
     // 기본 셰이더랑 InputLayout을 설정
     DeviceContext->VSSetShader(SimpleVertexShader, nullptr, 0);
-    DeviceContext->PSSetShader(SimplePixelShader, nullptr, 0);
+    // DeviceContext->PSSetShader(SimplePixelShader, nullptr, 0);
     DeviceContext->IASetInputLayout(SimpleInputLayout);
     
     if (ConstantWorldBuffer)
@@ -315,6 +345,75 @@ void URenderer::UpdateConstantUUID(DirectX::XMFLOAT4 UUIDColor) const
     DeviceContext->Unmap(ConstantUUIDBuffer, 0);
 }
 
+// void URenderer::CreateDeviceAndSwapChain(HWND hWindow) //멀티샘플링 활성화
+// {
+//     // 지원하는 Direct3D 기능 레벨을 정의
+//     D3D_FEATURE_LEVEL FeatureLevels[] = { D3D_FEATURE_LEVEL_11_0 };
+//
+//     D3D11CreateDevice(
+//     // 입력 매개변수
+//     nullptr,                                                       // 디바이스를 만들 때 사용할 비디오 어댑터에 대한 포인터
+//     D3D_DRIVER_TYPE_HARDWARE,                                      // 만들 드라이버 유형을 나타내는 D3D_DRIVER_TYPE 열거형 값
+//     nullptr,                                                       // 소프트웨어 래스터라이저를 구현하는 DLL에 대한 핸들
+//     D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG,  // 사용할 런타임 계층을 지정하는 D3D11_CREATE_DEVICE_FLAG 열거형 값들의 조합
+//     FeatureLevels,                                                 // 만들려는 기능 수준의 순서를 결정하는 D3D_FEATURE_LEVEL 배열에 대한 포인터
+//     ARRAYSIZE(FeatureLevels),                                      // pFeatureLevels 배열의 요소 수
+//     D3D11_SDK_VERSION,                                             // SDK 버전. 주로 D3D11_SDK_VERSION을 사용
+//     &Device,                                                       // 생성된 ID3D11Device 인터페이스에 대한 포인터
+//     nullptr,                                                       // 선택된 기능 수준을 나타내는 D3D_FEATURE_LEVEL 값을 반환
+//     &DeviceContext  
+//     );
+//     
+//     // Device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 4, &msaaQuality);
+//     // assert(msaaQuality > 0);
+//     
+//     // SwapChain 구조체 초기화
+//     DXGI_SWAP_CHAIN_DESC SwapChainDesc = {};
+//     SwapChainDesc.BufferDesc.Width = 0;                            // 창 크기에 맞게 자동으로 설정
+//     SwapChainDesc.BufferDesc.Height = 0;                           // 창 크기에 맞게 자동으로 설정
+//     SwapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;  // 색상 포멧
+//
+//     SwapChainDesc.SampleDesc.Count = 4;                            // 멀티 샘플링 활성화
+//     SwapChainDesc.SampleDesc.Quality = msaaQuality-1;
+//     
+//     SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;   // 렌더 타겟으로 설정
+//     SwapChainDesc.BufferCount = 2;                                 // 더블 버퍼링
+//     SwapChainDesc.OutputWindow = hWindow;                          // 렌더링할 창 핸들
+//     SwapChainDesc.Windowed = TRUE;                                 // 창 모드
+//     SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;      // 스왑 방식
+//
+//     IDXGIDevice* dxgiDevice = 0;
+//     Device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
+//
+//     IDXGIAdapter* dxgiAdapter = 0;
+//     dxgiDevice->GetParent(__uuidof(IDXGIAdapter), (void**)&dxgiAdapter);
+//
+//     IDXGIFactory* dxgiFactory = 0;
+//     dxgiAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&dxgiFactory);
+//
+//     dxgiFactory->CreateSwapChain(Device, &SwapChainDesc, &SwapChain);
+//
+//     dxgiDevice->Release();
+//     dxgiAdapter->Release();
+//     dxgiFactory->Release();
+//
+//     ViewportInfo = {
+//         0.0f, 0.0f,
+//         static_cast<float>(SwapChainDesc.BufferDesc.Width), static_cast<float>(SwapChainDesc.BufferDesc.Height),
+//         0.0f, 1.0f
+//     };
+//     //Windown Width, Height 구하기
+//     RECT Rect;
+//     int Width , Height;
+//     if (GetClientRect(hWindow , &Rect)) {
+//         Width = Rect.right - Rect.left;
+//         Height = Rect.bottom - Rect.top;
+//     }
+//     ViewportInfo.Width = Width;
+//     ViewportInfo.Height = Height; 
+//     
+// }
+
 /** Direct3D Device 및 SwapChain을 생성합니다. */
 void URenderer::CreateDeviceAndSwapChain(HWND hWindow)
 {
@@ -332,7 +431,7 @@ void URenderer::CreateDeviceAndSwapChain(HWND hWindow)
     SwapChainDesc.OutputWindow = hWindow;                          // 렌더링할 창 핸들
     SwapChainDesc.Windowed = TRUE;                                 // 창 모드
     SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;      // 스왑 방식
-
+    
     // Direct3D Device와 SwapChain을 생성
     D3D11CreateDeviceAndSwapChain(
         // 입력 매개변수
@@ -410,8 +509,9 @@ void URenderer::CreateFrameBuffer()
     D3D11_RENDER_TARGET_VIEW_DESC FrameBufferRTVDesc = {};
     FrameBufferRTVDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;      // 색상 포맷
     FrameBufferRTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; // 2D 텍스처
-
+    
     Device->CreateRenderTargetView(FrameBuffer, &FrameBufferRTVDesc, &FrameBufferRTV);
+
 }
 
 /** 프레임 버퍼를 해제합니다. */
@@ -427,6 +527,18 @@ void URenderer::ReleaseFrameBuffer()
     {
         FrameBufferRTV->Release();
         FrameBufferRTV = nullptr;
+    }
+
+    if (PickingFrameBuffer)
+    {
+        PickingFrameBuffer->Release();
+        PickingFrameBuffer = nullptr;
+    }
+
+    if (PickingFrameBufferRTV)
+    {
+        PickingFrameBufferRTV->Release();
+        PickingFrameBufferRTV = nullptr;
     }
 }
 
@@ -450,83 +562,56 @@ void URenderer::ReleaseRasterizerState()
     }
 }
 
-// void URenderer::CreateStagingTexture()
-// {
-//     D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
-//     ZeroMemory(&depthStencilDesc, sizeof(depthStencilDesc));
-//
-//     depthStencilDesc.DepthEnable = TRUE;
-//     depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-//     depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
-//
-//     ID3D11DepthStencilState* depthStencilState;
-//     Device->CreateDepthStencilState(&depthStencilDesc, &depthStencilState);
-// }
-//
-// void URenderer::ReleaseStagingTexture()
-// {
-//     if (StagingTexture)
-//     {
-//         StagingTexture->Release();
-//         StagingTexture = nullptr;
-//     }
-//     if (BackBuffer)
-//     {
-//         BackBuffer->Release();
-//         BackBuffer = nullptr;
-//     }
-// }
+int GammaToLinear(int gammaValue, float gamma = 2.2f) {
+    // 감마 보정된 값을 선형 공간으로 변환
+    return static_cast<int>(pow(static_cast<float>(gammaValue) / 255.0f, gamma) * 255.0f);
+}
 
 DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
 {
-    // 백 버퍼 가져오기
-    ID3D11Texture2D* backBuffer;
-    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    // 1. 백 버퍼 가져오기
+    ID3D11Texture2D* backBuffer = nullptr;
+    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
+    
+    // 2. 백 버퍼 설명 가져오기
+    D3D11_TEXTURE2D_DESC backBufferDesc;
+    backBuffer->GetDesc(&backBufferDesc);
 
-    // 스테이징 텍스처 생성 (CPU 읽기 가능)
-    D3D11_TEXTURE2D_DESC desc;
-    backBuffer->GetDesc(&desc);
-    desc.Usage = D3D11_USAGE_STAGING;
-    desc.BindFlags = 0;
-    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-
-    ID3D11Texture2D* stagingTexture;
-    Device->CreateTexture2D(&desc, nullptr, &stagingTexture);
-
-    // 백 버퍼 → 스테이징 텍스처 복사
-    DeviceContext->CopySubresourceRegion()
+    // 5. 스테이징 텍스처 생성 (CPU 읽기 가능)
+    D3D11_TEXTURE2D_DESC stagingDesc = backBufferDesc;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.BindFlags = 0;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    
+    ID3D11Texture2D* stagingTexture = nullptr;
+    Device->CreateTexture2D(&stagingDesc, nullptr, &stagingTexture);
     DeviceContext->CopyResource(stagingTexture, backBuffer);
-
-    ID3D11Texture2D* ResolveTexture;
     
-    desc.Format = DXGI_FORMAT_R32G32B32_FLOAT;
-    Device->CreateTexture2D(&desc, nullptr, &ResolveTexture);
-    
-    DeviceContext->ResolveSubresource(ResolveTexture, 0, stagingTexture, 0, DXGI_FORMAT_R32G32B32_FLOAT);
+    // 6. 데이터 매핑
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    DeviceContext->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
 
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    DeviceContext->Map(ResolveTexture, 0, D3D11_MAP_READ, 0, &mapped);
-    
-    // 픽셀 좌표 계산 (클릭 위치 기반)
-    UINT x = MPos.X;
-    UINT y = MPos.Y;
-    UINT pixelIndex = y * mapped.RowPitch / 128 + x; // 4 bytes per pixel (RGBA)
+    // 7. 픽셀 좌표 계산
+    const UINT x = static_cast<UINT>(MPos.X);
+    const UINT y = static_cast<UINT>(MPos.Y);
+    const UINT byteOffset = y * mapped.RowPitch + x * 4; // 정확한 바이트 오프셋 계산
 
-    BYTE* pixels = (BYTE*)mapped.pData;
-    // RGBA 값 추출
-    DirectX::XMFLOAT4 color = {
-        static_cast<float>(pixels[pixelIndex * 4 + 0]),
-        static_cast<float>(pixels[pixelIndex * 4 + 1]),
-        static_cast<float>(pixels[pixelIndex * 4 + 2]),
-        static_cast<float>(pixels[pixelIndex * 4 + 3]),
-    };
-    // 매핑 해제
+    // 8. RGBA 값 추출 (정수 값 그대로 읽기)
+    const BYTE* pixelData = static_cast<const BYTE*>(mapped.pData);
+    DirectX::XMFLOAT4 color;
+    color.x = GammaToLinear(static_cast<float>(pixelData[byteOffset + 0])); // R 값을 그대로 읽음
+    color.y = GammaToLinear(static_cast<float>(pixelData[byteOffset + 1])); // G 값을 그대로 읽음
+    color.z = GammaToLinear(static_cast<float>(pixelData[byteOffset + 2])); // B 값을 그대로 읽음
+    color.w = GammaToLinear(static_cast<float>(pixelData[byteOffset + 3])); // A 값을 그대로 읽음
+
+    std::cout << "X: "<<(int)color.x << " Y: "<<(int)color.y << " Z: "<<color.z << " A: "<<color.  w << "\n" ;
+
+    // 9. 매핑 해제 및 리소스 정리
     DeviceContext->Unmap(stagingTexture, 0);
-    
-    stagingTexture->Release();
-    backBuffer->Release();
-    
-    return color;
+    // stagingTexture->Release();
+    // backBuffer->Release();
+
+    return color; // RGBA 값 반환
 }
 
 void URenderer::CreateDepthStencilBuffer(FVector WindowSize)
@@ -538,10 +623,12 @@ void URenderer::CreateDepthStencilBuffer(FVector WindowSize)
     DepthDesc.MipLevels = 1;
     DepthDesc.ArraySize = 1;
     DepthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    // DepthDesc.SampleDesc.Count = 4;
     DepthDesc.SampleDesc.Count = 1;
+    // DepthDesc.SampleDesc.Quality = msaaQuality - 1;
     DepthDesc.Usage = D3D11_USAGE_DEFAULT;
     DepthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-
+        
     ID3D11Texture2D* DepthStencilTexture;
     Device->CreateTexture2D(&DepthDesc, nullptr, &DepthStencilTexture);
 
@@ -549,6 +636,7 @@ void URenderer::CreateDepthStencilBuffer(FVector WindowSize)
     D3D11_DEPTH_STENCIL_VIEW_DESC DepthStencilViewDesc = {};
     DepthStencilViewDesc.Format = DepthDesc.Format;
     DepthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    // DepthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 
     Device->CreateDepthStencilView(DepthStencilTexture, &DepthStencilViewDesc, &DepthStencilView);
     

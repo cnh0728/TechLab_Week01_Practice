@@ -31,6 +31,8 @@ public:
     /** Renderer를 초기화 합니다. */
     void Create(HWND hWindow);
 
+    void CreatePickingTexture(HWND hWnd);
+    
     /** Renderer에 사용된 모든 리소스를 해제합니다. */
     void Release();
 
@@ -117,7 +119,9 @@ protected:
 
     // 렌더링에 필요한 리소스 및 상태를 관리하기 위한 변수들
     ID3D11Texture2D* FrameBuffer = nullptr;                 // 화면 출력용 텍스처
+    ID3D11Texture2D* PickingFrameBuffer = nullptr;                 // 화면 출력용 텍스처
     ID3D11RenderTargetView* FrameBufferRTV = nullptr;       // 텍스처를 렌더 타겟으로 사용하는 뷰
+    ID3D11RenderTargetView* PickingFrameBufferRTV = nullptr;       // 텍스처를 렌더 타겟으로 사용하는 뷰
     ID3D11RasterizerState* RasterizerState = nullptr;       // 래스터라이저 상태(컬링, 채우기 모드 등 정의)
     ID3D11Buffer* ConstantWorldBuffer = nullptr;                 // 뷰 상수 버퍼
     ID3D11Buffer* ConstantUUIDBuffer = nullptr;                 // 뷰 상수 버퍼
@@ -126,14 +130,17 @@ protected:
     ID3D11DepthStencilState* DepthStencilState = nullptr;
     ID3D11BlendState* BlendState = nullptr;
 
+    FLOAT PickingClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
     FLOAT ClearColor[4] = { 0.025f, 0.025f, 0.025f, 1.0f }; // 화면을 초기화(clear)할 때 사용할 색상 (RGBA)
     D3D11_VIEWPORT ViewportInfo = {};                       // 렌더링 영역을 정의하는 뷰포트 정보
 
+    
     // Shader를 렌더링할 때 사용되는 변수들
     ID3D11VertexShader* SimpleVertexShader = nullptr;       // Vertex 데이터를 처리하는 Vertex 셰이더
     ID3D11PixelShader* SimplePixelShader = nullptr;         // Pixel의 색상을 결정하는 Pixel 셰이더
     ID3D11PixelShader* UIDPixelShader = nullptr;         // Pixel의 색상을 결정하는 Pixel 셰이더
     ID3D11InputLayout* SimpleInputLayout = nullptr;         // Vertex 셰이더 입력 레이아웃 정의
 
+    UINT msaaQuality = 0;
     unsigned int Stride = 0;
 };

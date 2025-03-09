@@ -272,14 +272,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     	//기본적으로 해줘야하는거
         Renderer.Prepare();
 		Renderer.PrepareShader();
-    	
-    	Renderer.PrepareMain();
-    	// Renderer.PrepareShader();
-    	// for (int i = 0; i < ArrSize; ++i)
-		// {
-    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera );
-    	// 	Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
-    	// }
 
     	// Renderer.PreparePicking();
     	Renderer.PreparePickingShader();
@@ -298,14 +290,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     		
     		DirectX::XMFLOAT4 color = Renderer.GetPixel(FVector(pt.x, pt.y, 0));
 	    
-    		std::cout << color.x << " " << color.y << " " << color.z << " " << color.w << "\n";
     		std::cout << FLOAT4ToUUID(color) << "\n";
     	}
+	    //
+    	// Renderer.PrepareMainShader();
+    	// for (int i = 0; i < ArrSize; ++i)
+    	// {
+    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera );
+    	// 	Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    	// }
 
 #pragma region DrawAxis
 
-    	Renderer.PrepareLine();
 		zeroObject->UpdateConstantView(Renderer, *Camera);
+    	Renderer.PrepareLine();
     	
 		Renderer.RenderPrimitive(VertexBufferAxisX, ARRAYSIZE(AxisXVertices));
     	Renderer.RenderPrimitive(VertexBufferAxisY, ARRAYSIZE(AxisYVertices));
