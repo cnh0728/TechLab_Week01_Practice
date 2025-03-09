@@ -15,10 +15,9 @@
 class URenderer
 {
 private:
-    struct alignas(16) FConstants
+    struct alignas(16) FUUIDConstants
     {
-        FVector Offset;
-        FVector Scale;
+        DirectX::XMFLOAT4 UUIDColor;
     };
 
     struct alignas(16) FMatrixConstants
@@ -26,7 +25,6 @@ private:
         DirectX::XMMATRIX World;
         DirectX::XMMATRIX View;
         DirectX::XMMATRIX Proj;  
-        DirectX::XMFLOAT4 UUIDColor;
     };
 
 public:
@@ -49,6 +47,7 @@ public:
     void PreparePicking();
     void PrepareMain();
     void PreparePickingShader() const;
+    void PrepareMainShader() const;
 
     /** 스왑 체인의 백 버퍼와 프론트 버퍼를 교체하여 화면에 출력 */
     void SwapBuffer() const;
@@ -79,7 +78,9 @@ public:
     /** Buffer를 해제합니다. */
     void ReleaseVertexBuffer(ID3D11Buffer* pBuffer) const;
     
-    void UpdateConstantView(UObject OriginTargetPos, UCamera Camera, DirectX::XMFLOAT4 UUIDColor) const;
+    void UpdateConstantView(UObject OriginTargetPos, UCamera Camera) const;
+    void UpdateConstantUUID(DirectX::XMFLOAT4 UUIDColor) const;
+    void UpdateConstantPick(DirectX::XMFLOAT4 UUIDColor) const;
     DirectX::XMFLOAT4 GetPixel(FVector MPos);
 
     ID3D11Device* GetDevice() const { return Device; }
@@ -119,6 +120,7 @@ protected:
     ID3D11RenderTargetView* FrameBufferRTV = nullptr;       // 텍스처를 렌더 타겟으로 사용하는 뷰
     ID3D11RasterizerState* RasterizerState = nullptr;       // 래스터라이저 상태(컬링, 채우기 모드 등 정의)
     ID3D11Buffer* ConstantWorldBuffer = nullptr;                 // 뷰 상수 버퍼
+    ID3D11Buffer* ConstantUUIDBuffer = nullptr;                 // 뷰 상수 버퍼
 
     ID3D11DepthStencilView* DepthStencilView = nullptr;
     ID3D11DepthStencilState* DepthStencilState = nullptr;

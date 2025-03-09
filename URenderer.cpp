@@ -97,10 +97,11 @@ void URenderer::CreateConstantBuffer()
     D3D11_BUFFER_DESC ConstantBufferDesc = {};
     ConstantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;                        // 매 프레임 CPU에서 업데이트 하기 위해
     ConstantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;             // 상수 버퍼로 설정
-    ConstantBufferDesc.ByteWidth = sizeof(FConstants) + 0xf & 0xfffffff0;  // 16byte의 배수로 올림
+    ConstantBufferDesc.ByteWidth = sizeof(FUUIDConstants) + 0xf & 0xfffffff0;  // 16byte의 배수로 올림
     ConstantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;            // CPU에서 쓰기 접근이 가능하게 설정
 
     Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantWorldBuffer);
+    Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantUUIDBuffer);
 }
 void URenderer::ReleaseConstantBuffer()
 {
@@ -108,6 +109,11 @@ void URenderer::ReleaseConstantBuffer()
     {
         ConstantWorldBuffer->Release();
         ConstantWorldBuffer = nullptr;
+    }
+    if (ConstantUUIDBuffer)
+    {
+        ConstantUUIDBuffer->Release();
+        ConstantUUIDBuffer = nullptr;
     }
 }
 
@@ -191,16 +197,19 @@ void URenderer::PrepareLine()
 
 void URenderer::PreparePickingShader() const
 {
-    DeviceContext->VSSetShader(SimpleVertexShader, nullptr, 0);
     DeviceContext->PSSetShader(UIDPixelShader, nullptr, 0);
-    DeviceContext->IASetInputLayout(SimpleInputLayout);
 
-    if (ConstantWorldBuffer)
+    if (ConstantUUIDBuffer)
     {
-        DeviceContext->VSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
-        DeviceContext->PSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
+        DeviceContext->PSSetConstantBuffers(1, 1, &ConstantUUIDBuffer);
     }
 }
+
+void URenderer::PrepareMainShader() const
+{
+    DeviceContext->PSSetShader(SimplePixelShader, nullptr, 0);
+}
+
 /** 셰이더를 준비 합니다. */
 void URenderer::PrepareShader() const
 {
@@ -212,7 +221,6 @@ void URenderer::PrepareShader() const
     if (ConstantWorldBuffer)
     {
         DeviceContext->VSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
-        DeviceContext->PSSetConstantBuffers(0, 1, &ConstantWorldBuffer);
     }
 }
 
@@ -262,7 +270,7 @@ void URenderer::ReleaseVertexBuffer(ID3D11Buffer* pBuffer) const
     pBuffer->Release();
 }
 
-void URenderer::UpdateConstantView(UObject Target, UCamera Camera, DirectX::XMFLOAT4 UUIDColor) const
+void URenderer::UpdateConstantView(UObject Target, UCamera Camera) const
 {
     if (!ConstantWorldBuffer) return;
 
@@ -280,7 +288,6 @@ void URenderer::UpdateConstantView(UObject Target, UCamera Camera, DirectX::XMFL
 
     DirectX::XMMATRIX ProjMatrix = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, 1, 0.1f, 100.0f);
 
-    UUIDColor = DirectX::XMFLOAT4(UUIDColor.x/255.0f, UUIDColor.y/255.0f, UUIDColor.z/255.0f, UUIDColor.w/255.0f);
     
     DeviceContext->Map(ConstantWorldBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ConstantBufferMSR);
     {
@@ -288,9 +295,24 @@ void URenderer::UpdateConstantView(UObject Target, UCamera Camera, DirectX::XMFL
         Constants->World = DirectX::XMMatrixTranspose(WorldMatrix);
         Constants->View = DirectX::XMMatrixTranspose(ViewMatrix);
         Constants->Proj = DirectX::XMMatrixTranspose(ProjMatrix);
-        // Constants->UUIDColor = UUIDColor;
     }
     DeviceContext->Unmap(ConstantWorldBuffer, 0);
+}
+
+void URenderer::UpdateConstantUUID(DirectX::XMFLOAT4 UUIDColor) const
+{
+    if (!ConstantUUIDBuffer) return;
+
+    D3D11_MAPPED_SUBRESOURCE ConstantBufferMSR;
+
+    UUIDColor = DirectX::XMFLOAT4(UUIDColor.x/255.0f, UUIDColor.y/255.0f, UUIDColor.z/255.0f, UUIDColor.w/255.0f);
+    
+    DeviceContext->Map(ConstantUUIDBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ConstantBufferMSR);
+    {
+        FUUIDConstants* Constants = static_cast<FUUIDConstants*>(ConstantBufferMSR.pData);
+        Constants->UUIDColor = UUIDColor;
+    }
+    DeviceContext->Unmap(ConstantUUIDBuffer, 0);
 }
 
 /** Direct3D Device 및 SwapChain을 생성합니다. */
@@ -472,15 +494,23 @@ DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
     Device->CreateTexture2D(&desc, nullptr, &stagingTexture);
 
     // 백 버퍼 → 스테이징 텍스처 복사
+    DeviceContext->CopySubresourceRegion()
     DeviceContext->CopyResource(stagingTexture, backBuffer);
 
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    DeviceContext->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
+    ID3D11Texture2D* ResolveTexture;
+    
+    desc.Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    Device->CreateTexture2D(&desc, nullptr, &ResolveTexture);
+    
+    DeviceContext->ResolveSubresource(ResolveTexture, 0, stagingTexture, 0, DXGI_FORMAT_R32G32B32_FLOAT);
 
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    DeviceContext->Map(ResolveTexture, 0, D3D11_MAP_READ, 0, &mapped);
+    
     // 픽셀 좌표 계산 (클릭 위치 기반)
     UINT x = MPos.X;
     UINT y = MPos.Y;
-    UINT pixelIndex = y * mapped.RowPitch / 4 + x; // 4 bytes per pixel (RGBA)
+    UINT pixelIndex = y * mapped.RowPitch / 128 + x; // 4 bytes per pixel (RGBA)
 
     BYTE* pixels = (BYTE*)mapped.pData;
     // RGBA 값 추출

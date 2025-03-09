@@ -33,6 +33,10 @@ bool UObject::CheckCollision(const UObject& A, const UObject& B)
 	return Distance <= (A.Radius + B.Radius);
 }
 
+float Walls[] = {
+	-20.0f, 20.0f
+};
+
 void UObject::Update(float DeltaTime)
 {
 	if (!bApplyGravity)
@@ -41,36 +45,36 @@ void UObject::Update(float DeltaTime)
 	}
 
 	// Add Velocity
-	if (Location.X - Radius < -1.0f)
+	if (Location.X - Radius < Walls[0])
 	{
-		Location.X = -1.0f + Radius;
+		Location.X = Walls[0] + Radius;
 		HandleWallCollision(FVector(1, 0, 0));
 	}
-	else if (Location.X + Radius > 1.0f)
+	else if (Location.X + Radius > Walls[1])
 	{
-		Location.X = 1.0f - Radius;
+		Location.X = Walls[1] - Radius;
 		HandleWallCollision(FVector(-1, 0, 0));
 	}
 
-	if (Location.Y - Radius < -1.0f)
+	if (Location.Y - Radius < Walls[0])
 	{
-		Location.Y = -1.0f + Radius;
+		Location.Y = Walls[0] + Radius;
 		HandleWallCollision(FVector(0, 1, 0));
 	}
-	else if (Location.Y + Radius > 1.0f)
+	else if (Location.Y + Radius > Walls[1])
 	{
-		Location.Y = 1.0f - Radius;
+		Location.Y = Walls[1] - Radius;
 		HandleWallCollision(FVector(0, -1, 0));
 	}
 
-	if (Location.Z - Radius < -1.0f)
+	if (Location.Z - Radius < Walls[0])
 	{
-		Location.Z = -1.0f + Radius;
+		Location.Z = Walls[0] + Radius;
 		HandleWallCollision(FVector(0, 0, 1));
 	}
-	else if (Location.Z + Radius > 1.0f)
+	else if (Location.Z + Radius > Walls[1])
 	{
-		Location.Z = 1.0f - Radius;
+		Location.Z = Walls[1] - Radius;
 		HandleWallCollision(FVector(0, 0, -1));
 	}
 
@@ -85,9 +89,14 @@ void UObject::FixedUpdate(float FixedTime)
 }
 
 
-void UObject::UpdateConstantView(const URenderer& Renderer, const UCamera& Camera, DirectX::XMFLOAT4 UUIDColor) const
+void UObject::UpdateConstantView(const URenderer& Renderer, const UCamera& Camera) const
 {
-	Renderer.UpdateConstantView(*this, Camera, UUIDColor);
+	Renderer.UpdateConstantView(*this, Camera);
+}
+
+void UObject::UpdateConstantUUID(const URenderer& Renderer, const DirectX::XMFLOAT4 UUIDColor)const
+{
+	Renderer.UpdateConstantUUID(UUIDColor);
 }
 
 void UObject::HandleWallCollision(const FVector& WallNormal)

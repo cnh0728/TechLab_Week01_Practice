@@ -9,8 +9,11 @@ cbuffer FMatrix : register(b0)
     matrix World;
     matrix View;
     matrix Proj;
-    float4 UUIDColor;
 };
+
+cbuffer FMatrix : register(b1){
+    float4 UUIDColor;
+}
 
 struct VS_INPUT
 {
@@ -49,6 +52,7 @@ PS_INPUT mainVS(VS_INPUT input)
 
 float4 UUIDPS(PS_INPUT input):SV_TARGET{
     
+    // return float4(0/255.0f, 1/255.0f,1/255.0f,1/255.0f);
     return UUIDColor;
 }
 

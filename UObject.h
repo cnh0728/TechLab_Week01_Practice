@@ -40,11 +40,10 @@ public:
 	void Update(float DeltaTime);
 
 	void FixedUpdate(float FixedTime);
-
-	void UpdateConstant(const class URenderer& Renderer) const;
-
-	void UpdateConstantView(const URenderer& Renderer, const class UCamera& Camera, DirectX::XMFLOAT4 UUIDColor) const;
 	
+	void UpdateConstantView(const class URenderer& Renderer, const class UCamera& Camera) const;
+
+	void UpdateConstantUUID(const URenderer& Renderer, DirectX::XMFLOAT4 UUIDColor) const;
 	void HandleWallCollision(const FVector& WallNormal);
 
 	void HandleBallCollision(UObject& OtherBall);

@@ -269,35 +269,24 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     	}
 
         // 렌더링 준비 작업
+    	//기본적으로 해줘야하는거
         Renderer.Prepare();
+		Renderer.PrepareShader();
     	
-    	// Renderer.PrepareMain();
-    	Renderer.PrepareShader();
+    	Renderer.PrepareMain();
+    	// Renderer.PrepareShader();
     	// for (int i = 0; i < ArrSize; ++i)
-    	// {
-    	// 	RECT dRect;
-    	// 	int dWidth = 100 , dHeight = 100;
-    	// 	if (GetClientRect(hWnd , &dRect)) {
-    	// 		dWidth = dRect.right - dRect.left;
-    	// 		dHeight = dRect.bottom - dRect.top;
-    	// 	}
-    	// 	
-    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(Balls[i]->UUID));
+		// {
+    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera );
     	// 	Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
     	// }
 
+    	// Renderer.PreparePicking();
     	Renderer.PreparePickingShader();
-    	Renderer.PreparePicking();
     	for (int i = 0; i < ArrSize; ++i)
     	{
-    		RECT dRect;
-    		int dWidth = 100 , dHeight = 100;
-    		if (GetClientRect(hWnd , &dRect)) {
-    			dWidth = dRect.right - dRect.left;
-    			dHeight = dRect.bottom - dRect.top;
-    		}
-    		
-    		Balls[i]->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(Balls[i]->UUID));
+			Balls[i]->UpdateConstantView(Renderer, *Camera);
+    		Balls[i]->UpdateConstantUUID(Renderer, UUIDToFLOAT4(Balls[i]->UUID));
     		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
     	}
     	
@@ -309,16 +298,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     		
     		DirectX::XMFLOAT4 color = Renderer.GetPixel(FVector(pt.x, pt.y, 0));
 	    
-    		std::cout << color.x << " ";
+    		std::cout << color.x << " " << color.y << " " << color.z << " " << color.w << "\n";
     		std::cout << FLOAT4ToUUID(color) << "\n";
     	}
-
-
 
 #pragma region DrawAxis
 
     	Renderer.PrepareLine();
-		zeroObject->UpdateConstantView(Renderer, *Camera, UUIDToFLOAT4(0));
+		zeroObject->UpdateConstantView(Renderer, *Camera);
     	
 		Renderer.RenderPrimitive(VertexBufferAxisX, ARRAYSIZE(AxisXVertices));
     	Renderer.RenderPrimitive(VertexBufferAxisY, ARRAYSIZE(AxisYVertices));
