@@ -22,7 +22,6 @@ void URenderer::CreatePickingTexture(HWND hWnd)
         Height = Rect.bottom - Rect.top;
     }
     
-    ID3D11Texture2D* PickingFrameBuffer;
     D3D11_TEXTURE2D_DESC textureDesc = {};
     textureDesc.Width = Width;
     textureDesc.Height = Height;
@@ -192,6 +191,7 @@ void URenderer::PreparePicking()
 
 void URenderer::PrepareMain()
 {
+    DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, DepthStencilView);
     DeviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 }
 
@@ -265,6 +265,15 @@ void URenderer::RenderPrimitive(ID3D11Buffer* pBuffer, UINT numVertices) const
     DeviceContext->IASetVertexBuffers(0, 1, &pBuffer, &Stride, &Offset);
 
     DeviceContext->Draw(numVertices, 0);
+}
+
+void URenderer::RenderPickingTexture()
+{
+    // 백버퍼로 복사
+    ID3D11Texture2D* backBuffer;
+    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
+    DeviceContext->CopyResource(backBuffer, PickingFrameBuffer);
+    backBuffer->Release();
 }
 
 /**
@@ -569,24 +578,25 @@ int GammaToLinear(int gammaValue, float gamma = 2.2f) {
 
 DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
 {
-    // 1. 백 버퍼 가져오기
-    ID3D11Texture2D* backBuffer = nullptr;
-    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
-    
-    // 2. 백 버퍼 설명 가져오기
-    D3D11_TEXTURE2D_DESC backBufferDesc;
-    backBuffer->GetDesc(&backBufferDesc);
-
-    // 5. 스테이징 텍스처 생성 (CPU 읽기 가능)
-    D3D11_TEXTURE2D_DESC stagingDesc = backBufferDesc;
+    // // 1. 백 버퍼 가져오기
+    // ID3D11Texture2D* backBuffer = nullptr;
+    // SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
+    //
+    // // 2. 백 버퍼 설명 가져오기
+    // D3D11_TEXTURE2D_DESC backBufferDesc;
+    // backBuffer->GetDesc(&backBufferDesc);
+    //
+    // // 5. 스테이징 텍스처 생성 (CPU 읽기 가능)
+    D3D11_TEXTURE2D_DESC stagingDesc = {};
+    PickingFrameBuffer->GetDesc(&stagingDesc);
     stagingDesc.Usage = D3D11_USAGE_STAGING;
     stagingDesc.BindFlags = 0;
     stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    
+
     ID3D11Texture2D* stagingTexture = nullptr;
     Device->CreateTexture2D(&stagingDesc, nullptr, &stagingTexture);
-    DeviceContext->CopyResource(stagingTexture, backBuffer);
-    
+    DeviceContext->CopyResource(stagingTexture, PickingFrameBuffer);
+
     // 6. 데이터 매핑
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     DeviceContext->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
@@ -599,18 +609,16 @@ DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
     // 8. RGBA 값 추출 (정수 값 그대로 읽기)
     const BYTE* pixelData = static_cast<const BYTE*>(mapped.pData);
     DirectX::XMFLOAT4 color;
-    color.x = GammaToLinear(static_cast<float>(pixelData[byteOffset + 0])); // R 값을 그대로 읽음
-    color.y = GammaToLinear(static_cast<float>(pixelData[byteOffset + 1])); // G 값을 그대로 읽음
-    color.z = GammaToLinear(static_cast<float>(pixelData[byteOffset + 2])); // B 값을 그대로 읽음
-    color.w = GammaToLinear(static_cast<float>(pixelData[byteOffset + 3])); // A 값을 그대로 읽음
+    color.x = static_cast<float>(pixelData[byteOffset + 0]); // R 값을 그대로 읽음
+    color.y = static_cast<float>(pixelData[byteOffset + 1]); // G 값을 그대로 읽음
+    color.z = static_cast<float>(pixelData[byteOffset + 2]); // B 값을 그대로 읽음
+    color.w = static_cast<float>(pixelData[byteOffset + 3]); // A 값을 그대로 읽음
 
     std::cout << "X: "<<(int)color.x << " Y: "<<(int)color.y << " Z: "<<color.z << " A: "<<color.  w << "\n" ;
 
     // 9. 매핑 해제 및 리소스 정리
     DeviceContext->Unmap(stagingTexture, 0);
-    // stagingTexture->Release();
-    // backBuffer->Release();
-
+    
     return color; // RGBA 값 반환
 }
 

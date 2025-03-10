@@ -66,6 +66,7 @@ public:
      * @param numVertices 버텍스 버퍼에 저장된 버텍스의 총 개수
      */
     void RenderPrimitive(ID3D11Buffer* pBuffer, UINT numVertices) const;
+    void RenderPickingTexture();
 
     /**
      * 정점 데이터로 Vertex Buffer를 생성합니다.
@@ -130,7 +131,7 @@ protected:
     ID3D11DepthStencilState* DepthStencilState = nullptr;
     ID3D11BlendState* BlendState = nullptr;
 
-    FLOAT PickingClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    FLOAT PickingClearColor[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
     FLOAT ClearColor[4] = { 0.025f, 0.025f, 0.025f, 1.0f }; // 화면을 초기화(clear)할 때 사용할 색상 (RGBA)
     D3D11_VIEWPORT ViewportInfo = {};                       // 렌더링 영역을 정의하는 뷰포트 정보
 

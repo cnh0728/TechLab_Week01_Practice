@@ -142,6 +142,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
 	freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
 
+	// 콘솔 창 위치 조정
+	HWND consoleWindow = GetConsoleWindow();
+	SetWindowPos(consoleWindow, 0, 1100, 200, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+	
 	std::cout << "Debug Console Opened!" << '\n';
 #pragma region Init Renderer & ImGui
     // 렌더러 초기화
@@ -273,7 +277,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         Renderer.Prepare();
 		Renderer.PrepareShader();
 
-    	// Renderer.PreparePicking();
+    	Renderer.PreparePicking();
     	Renderer.PreparePickingShader();
     	for (int i = 0; i < ArrSize; ++i)
     	{
@@ -292,13 +296,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	    
     		std::cout << FLOAT4ToUUID(color) << "\n";
     	}
-	    //
-    	// Renderer.PrepareMainShader();
-    	// for (int i = 0; i < ArrSize; ++i)
-    	// {
-    	// 	Balls[i]->UpdateConstantView(Renderer, *Camera );
-    	// 	Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
-    	// }
+
+    	// Renderer.RenderPickingTexture();
+    	
+    	Renderer.PrepareMain();
+    	Renderer.PrepareMainShader();
+    	for (int i = 0; i < ArrSize; ++i)
+    	{
+    		Balls[i]->UpdateConstantView(Renderer, *Camera );
+    		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    	}
 
 #pragma region DrawAxis
 
