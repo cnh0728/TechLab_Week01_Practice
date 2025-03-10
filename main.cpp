@@ -109,7 +109,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 float UObject::Gravity = 9.81f;
-int UObject::UUID_GEN = 0;
+unsigned int UObject::UUID_GEN = 0;
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nShowCmd)
 {
@@ -277,12 +277,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         Renderer.Prepare();
 		Renderer.PrepareShader();
 
-    	Renderer.PreparePicking();
-    	Renderer.PreparePickingShader();
+    	//이거 마우스 다운일때만 해도되지않나
+
+    	if (InputSystem::Get().GetMouseDown(false))
+    	{
+    		Renderer.PreparePicking();
+    		Renderer.PreparePickingShader();
+
+    		for (int i = 0; i < ArrSize; ++i)
+    		{
+    			Balls[i]->UpdateConstantView(Renderer, *Camera);
+    			Balls[i]->UpdateConstantUUID(Renderer, UUIDToFLOAT4(Balls[i]->UUID));
+    			Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    		}
+    		
+    	}
+
+    	Renderer.PrepareMain();
+    	Renderer.PrepareMainShader();
     	for (int i = 0; i < ArrSize; ++i)
     	{
-			Balls[i]->UpdateConstantView(Renderer, *Camera);
-    		Balls[i]->UpdateConstantUUID(Renderer, UUIDToFLOAT4(Balls[i]->UUID));
+    		Balls[i]->UpdateConstantView(Renderer, *Camera );
     		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
     	}
     	
@@ -297,17 +312,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     		std::cout << FLOAT4ToUUID(color) << "\n";
     	}
 
-    	// Renderer.RenderPickingTexture();
-    	
-    	Renderer.PrepareMain();
-    	Renderer.PrepareMainShader();
-    	for (int i = 0; i < ArrSize; ++i)
-    	{
-    		Balls[i]->UpdateConstantView(Renderer, *Camera );
-    		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
-    	}
 
-#pragma region DrawAxis
+    	// Renderer.RenderPickingTexture();
+
+    	#pragma region DrawAxis
 
 		zeroObject->UpdateConstantView(Renderer, *Camera);
     	Renderer.PrepareLine();
