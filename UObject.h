@@ -13,9 +13,9 @@ namespace DirectX
 class UObject
 {
 public:
-	static int UUID_GEN;
+	static unsigned int UUID_GEN;
 	
-	int UUID;
+	unsigned int UUID;
 	
 	FVector Location;
 	FVector Rotation;

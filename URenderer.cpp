@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "PrimitiveVertices.h"
 #include "UObject.h"
 
 /** Renderer를 초기화 합니다. */
@@ -84,6 +85,12 @@ void URenderer::CreateShader()
     {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+
+        // 인스턴스 데이터 (Per-Instance)
+    { "WORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "WORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "WORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+    { "WORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
     };
 
     Device->CreateInputLayout(Layout, ARRAYSIZE(Layout), VertexShaderCSO->GetBufferPointer(), VertexShaderCSO->GetBufferSize(), &SimpleInputLayout);
@@ -140,6 +147,8 @@ void URenderer::CreateConstantBuffer()
 
     Device->CreateBuffer(&ConstantBufferDesc, nullptr, &ConstantUUIDBuffer);
 }
+
+
 void URenderer::ReleaseConstantBuffer()
 {
     if (ConstantWorldBuffer)
@@ -184,7 +193,6 @@ void URenderer::SwapBuffer() const
 
 void URenderer::PreparePicking()
 {
-    DeviceContext->ClearRenderTargetView(PickingFrameBufferRTV, PickingClearColor);
     // 렌더 타겟 바인딩
     DeviceContext->OMSetRenderTargets(1, &PickingFrameBufferRTV, nullptr);
 }
@@ -201,7 +209,8 @@ void URenderer::Prepare() const
     // 화면 지우기
     DeviceContext->ClearRenderTargetView(FrameBufferRTV, ClearColor);
     DeviceContext->ClearDepthStencilView(DepthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-    
+    DeviceContext->ClearRenderTargetView(PickingFrameBufferRTV, PickingClearColor);
+
     // InputAssembler의 Vertex 해석 방식을 설정
     DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -216,8 +225,9 @@ void URenderer::Prepare() const
     
     DeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
     DeviceContext->OMSetRenderTargets(1, &FrameBufferRTV, DepthStencilView);
-
 }
+
+
 
 void URenderer::PrepareLine()
 {
@@ -279,15 +289,20 @@ void URenderer::RenderPickingTexture()
 /**
  * 정점 데이터로 Vertex Buffer를 생성합니다.
  * @param Vertices 버퍼로 변환할 정점 데이터 배열의 포인터
- * @param ByteWidth 버퍼의 총 크기 (바이트 단위)
+ * @param MaxInstanceCount 버퍼의 총 크기 (바이트 단위)
  * @return 생성된 버텍스 버퍼에 대한 ID3D11Buffer 포인터, 실패 시 nullptr
  *
  * @note 이 함수는 D3D11_USAGE_IMMUTABLE 사용법으로 버퍼를 생성합니다.
  */
-ID3D11Buffer* URenderer::CreateVertexBuffer(const FVertexSimple* Vertices, UINT ByteWidth) const
+void URenderer::ClearMatrix()
+{
+    InstanceData.clear();
+}
+
+ID3D11Buffer* URenderer::CreateVertexBuffer(const FVertexSimple* Vertices, UINT MaxInstanceCount)
 {
     D3D11_BUFFER_DESC VertexBufferDesc = {};
-    VertexBufferDesc.ByteWidth = ByteWidth;
+    VertexBufferDesc.ByteWidth = MaxInstanceCount;
     VertexBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
     VertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 
@@ -300,7 +315,66 @@ ID3D11Buffer* URenderer::CreateVertexBuffer(const FVertexSimple* Vertices, UINT 
     {
         return nullptr;
     }
+
+    D3D11_BUFFER_DESC ibDesc = { };
+    ibDesc.Usage = D3D11_USAGE_DYNAMIC;
+    ibDesc.ByteWidth = sizeof(FMVP) * MaxInstanceCount; //InstanceCount만큼
+    ibDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    ibDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    Device->CreateBuffer(&ibDesc, nullptr, &pInstanceBuffer);
+    
     return VertexBuffer;
+}
+
+void URenderer::RenderInstance(ID3D11Buffer* VertexBuffer)
+{
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+    FMVP* arr = new FMVP[InstanceData.size()];
+    std::copy(InstanceData.begin(), InstanceData.end(), arr);
+    
+    DeviceContext->Map(pInstanceBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    FMVP* pData = reinterpret_cast<FMVP*>(mappedResource.pData);
+    // for (int i=0;i<InstanceData.size(); i++)
+    // {
+    //     pData[i] = InstanceData[i];
+    // }
+    memcpy(pData, arr, InstanceData.size() * sizeof(FMVP));
+    
+    DeviceContext->Unmap(pInstanceBuffer, 0);
+    
+    UINT strides[] = { 12 + 16, sizeof(FMVP)  };
+    UINT offsets[] = { 0, 0 };
+    ID3D11Buffer* buffers[] = { VertexBuffer, pInstanceBuffer };
+
+    DeviceContext->IASetVertexBuffers(0, 2, buffers, strides, offsets);
+    DeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    DeviceContext->DrawInstanced(ARRAYSIZE(CubeVertices), ObjCount, 0, 0);
+
+    delete[] arr;
+}
+
+void URenderer::UpdateInstance(UObject Target, UCamera Camera, int index)
+{
+    DirectX::XMMATRIX ScaleMatrix = DirectX::XMMatrixScalingFromVector(CastVecToXMV(FVector(Target.Radius,Target.Radius,Target.Radius)));
+    DirectX::XMMATRIX RotationMatrix = DirectX::XMMatrixRotationRollPitchYawFromVector(CastVecToXMV(Target.Rotation));
+    DirectX::XMMATRIX TranslationMatrix = DirectX::XMMatrixTranslationFromVector(CastVecToXMV(Target.Location));
+
+    DirectX::XMMATRIX WorldMatrix = TranslationMatrix * RotationMatrix * ScaleMatrix;
+
+    FVector CamForwardVec = Camera.Location + Camera.GetForward();
+    
+    DirectX::XMMATRIX ViewMatrix = DirectX::XMMatrixLookAtLH(CastVecToXMV(Camera.Location), CastVecToXMV(CamForwardVec), CastVecToXMV(Camera.UpVector));
+
+    DirectX::XMMATRIX ProjMatrix = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, 1, 0.1f, 100.0f);
+
+    DirectX::XMMATRIX MVP = XMMatrixTranspose((WorldMatrix * ViewMatrix * ProjMatrix));
+
+    FMVP M(MVP);
+
+    //
+    InstanceData.push_back(M);
 }
 
 /** Buffer를 해제합니다. */
@@ -618,6 +692,8 @@ DirectX::XMFLOAT4 URenderer::GetPixel(FVector MPos)
 
     // 9. 매핑 해제 및 리소스 정리
     DeviceContext->Unmap(stagingTexture, 0);
+
+    stagingTexture->Release();
     
     return color; // RGBA 값 반환
 }

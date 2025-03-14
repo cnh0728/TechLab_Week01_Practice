@@ -8,6 +8,7 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
+#include <vector>
 
 #include "UCamera.h"
 #include "UObject.h"
@@ -25,6 +26,10 @@ private:
         DirectX::XMMATRIX World;
         DirectX::XMMATRIX View;
         DirectX::XMMATRIX Proj;  
+    };
+
+    struct alignas(16) FMVP{
+        DirectX::XMMATRIX MVP;
     };
 
 public:
@@ -67,16 +72,19 @@ public:
      */
     void RenderPrimitive(ID3D11Buffer* pBuffer, UINT numVertices) const;
     void RenderPickingTexture();
+    void ClearMatrix();
 
     /**
      * 정점 데이터로 Vertex Buffer를 생성합니다.
      * @param Vertices 버퍼로 변환할 정점 데이터 배열의 포인터
-     * @param ByteWidth 버퍼의 총 크기 (바이트 단위)
+     * @param MaxInstanceCount 버퍼의 총 크기 (바이트 단위)
      * @return 생성된 버텍스 버퍼에 대한 ID3D11Buffer 포인터, 실패 시 nullptr
      *
      * @note 이 함수는 D3D11_USAGE_IMMUTABLE 사용법으로 버퍼를 생성합니다.
      */
-    ID3D11Buffer* CreateVertexBuffer(const FVertexSimple* Vertices, UINT ByteWidth) const;
+    ID3D11Buffer* CreateVertexBuffer(const FVertexSimple* Vertices, UINT MaxInstanceCount);
+    void RenderInstance(ID3D11Buffer* VertexBuffer);
+    void UpdateInstance(UObject Target, UCamera Camera, int index);
 
     /** Buffer를 해제합니다. */
     void ReleaseVertexBuffer(ID3D11Buffer* pBuffer) const;
@@ -127,14 +135,17 @@ protected:
     ID3D11Buffer* ConstantWorldBuffer = nullptr;                 // 뷰 상수 버퍼
     ID3D11Buffer* ConstantUUIDBuffer = nullptr;                 // 뷰 상수 버퍼
 
+    ID3D11Buffer* pInstanceBuffer = nullptr;
+
     ID3D11DepthStencilView* DepthStencilView = nullptr;
     ID3D11DepthStencilState* DepthStencilState = nullptr;
     ID3D11BlendState* BlendState = nullptr;
 
+    std::vector<FMVP> InstanceData;
+    
     FLOAT PickingClearColor[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
     FLOAT ClearColor[4] = { 0.025f, 0.025f, 0.025f, 1.0f }; // 화면을 초기화(clear)할 때 사용할 색상 (RGBA)
     D3D11_VIEWPORT ViewportInfo = {};                       // 렌더링 영역을 정의하는 뷰포트 정보
-
     
     // Shader를 렌더링할 때 사용되는 변수들
     ID3D11VertexShader* SimpleVertexShader = nullptr;       // Vertex 데이터를 처리하는 Vertex 셰이더
@@ -142,6 +153,7 @@ protected:
     ID3D11PixelShader* UIDPixelShader = nullptr;         // Pixel의 색상을 결정하는 Pixel 셰이더
     ID3D11InputLayout* SimpleInputLayout = nullptr;         // Vertex 셰이더 입력 레이아웃 정의
 
-    UINT msaaQuality = 0;
+public:
+    int ObjCount = 1;
     unsigned int Stride = 0;
 };

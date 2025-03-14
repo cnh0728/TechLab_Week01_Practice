@@ -13,7 +13,7 @@
 #include "PrimitiveVertices.h"
 #include "UObject.h"
 
-DirectX::XMFLOAT4 UUIDToFLOAT4(int UUID)
+DirectX::XMFLOAT4 EncodeUUID(unsigned int UUID)
 {
 	float a = (UUID >> 24) & 0xff;
 	float b = (UUID >> 16) & 0xff;
@@ -25,9 +25,9 @@ DirectX::XMFLOAT4 UUIDToFLOAT4(int UUID)
 	return color;
 }
 
-int FLOAT4ToUUID(DirectX::XMFLOAT4 f)
+int DecodeUUID(DirectX::XMFLOAT4 f)
 {
-	return (static_cast<int>(f.w)<<24) | (static_cast<int>(f.z)<<16) | (static_cast<int>(f.y)<<8) | (static_cast<int>(f.x));
+	return (static_cast<unsigned int>(f.w)<<24) | (static_cast<unsigned int>(f.z)<<16) | (static_cast<unsigned int>(f.y)<<8) | (static_cast<unsigned int>(f.x));
 }
 
 FVector GetWndWH(HWND hWnd)
@@ -167,11 +167,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 #pragma endregion Init Renderer & ImGui
 
 #pragma region Create Vertex Buffer
-	ID3D11Buffer* VertexBufferSphere = Renderer.CreateVertexBuffer(SphereVertices, sizeof(SphereVertices));
+	ID3D11Buffer* VertexBufferSphere = Renderer.CreateVertexBuffer(CubeVertices, 100000);
 
-	ID3D11Buffer* VertexBufferAxisX = Renderer.CreateVertexBuffer(AxisXVertices, sizeof(AxisXVertices));
-	ID3D11Buffer* VertexBufferAxisY = Renderer.CreateVertexBuffer(AxisYVertices, sizeof(AxisYVertices));
-	ID3D11Buffer* VertexBufferAxisZ = Renderer.CreateVertexBuffer(AxisZVertices, sizeof(AxisZVertices));
+	// ID3D11Buffer* VertexBufferAxisX = Renderer.CreateVertexBuffer(AxisXVertices, sizeof(AxisXVertices));
+	// ID3D11Buffer* VertexBufferAxisY = Renderer.CreateVertexBuffer(AxisYVertices, sizeof(AxisYVertices));
+	// ID3D11Buffer* VertexBufferAxisZ = Renderer.CreateVertexBuffer(AxisZVertices, sizeof(AxisZVertices));
 #pragma endregion Create Vertex Buffer
 
     // FPS 제한
@@ -194,7 +194,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	UObject** Balls = new UObject*[ArrCap];
 	Balls[0] = new UObject;
 
-	int NumOfBalls = 1;
+	Renderer.ObjCount = 1;
 
 	std::unique_ptr<UObject> zeroObject = std::make_unique<UObject>();
 	zeroObject->Location = FVector(0, 0, 0);
@@ -237,6 +237,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
                 break;
             }
         }
+
     	
 		// Update 로직
 		Input->InputUpdate(Camera.get());
@@ -258,16 +259,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     		}
 
     		// 공 충돌 처리
-    		for (int i = 0; i < ArrSize; ++i)
-    		{
-    			for (int j = i + 1; j < ArrSize; ++j)
-    			{
-    				if (UObject::CheckCollision(*Balls[i], *Balls[j]))
-    				{
-    					Balls[i]->HandleBallCollision(*Balls[j]);
-    				}
-    			}
-    		}
+    		// for (int i = 0; i < ArrSize; ++i)
+    		// {
+    		// 	for (int j = i + 1; j < ArrSize; ++j)
+    		// 	{
+    		// 		if (UObject::CheckCollision(*Balls[i], *Balls[j]))
+    		// 		{
+    		// 			Balls[i]->HandleBallCollision(*Balls[j]);
+    		// 		}
+    		// 	}
+    		// }
 
     		Accumulator -= FixedTimeStep;
     	}
@@ -279,27 +280,32 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 
     	//이거 마우스 다운일때만 해도되지않나
 
-    	if (InputSystem::Get().GetMouseDown(false))
-    	{
-    		Renderer.PreparePicking();
-    		Renderer.PreparePickingShader();
-
-    		for (int i = 0; i < ArrSize; ++i)
-    		{
-    			Balls[i]->UpdateConstantView(Renderer, *Camera);
-    			Balls[i]->UpdateConstantUUID(Renderer, UUIDToFLOAT4(Balls[i]->UUID));
-    			Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
-    		}
-    		
-    	}
+    	// if (InputSystem::Get().GetMouseDown(false))
+    	// {
+    	// 	Renderer.PreparePicking();
+    	// 	Renderer.PreparePickingShader();
+	    //
+    	// 	for (int i = 0; i < ArrSize; ++i)
+    	// 	{
+    	// 		Balls[i]->UpdateConstantView(Renderer, *Camera);
+    	// 		Balls[i]->UpdateConstantUUID(Renderer, EncodeUUID(Balls[i]->UUID));
+    	// 		// Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    	// 	}
+    	// 	
+    	// }
+	    //
+    	
+    	Renderer.ClearMatrix();
 
     	Renderer.PrepareMain();
     	Renderer.PrepareMainShader();
     	for (int i = 0; i < ArrSize; ++i)
     	{
-    		Balls[i]->UpdateConstantView(Renderer, *Camera );
-    		Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
+    		Renderer.UpdateInstance(*Balls[i], *Camera, i);
+    		// Balls[i]->UpdateConstantView(Renderer, *Camera );
+    		// Renderer.RenderPrimitive(VertexBufferSphere, ARRAYSIZE(SphereVertices));
     	}
+    	Renderer.RenderInstance(VertexBufferSphere);
     	
     	if (InputSystem::Get().GetMouseDown(false))
     	{
@@ -309,20 +315,21 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     		
     		DirectX::XMFLOAT4 color = Renderer.GetPixel(FVector(pt.x, pt.y, 0));
 	    
-    		std::cout << FLOAT4ToUUID(color) << "\n";
+    		std::cout << DecodeUUID(color) << "\n";
     	}
 
+    	
 
     	// Renderer.RenderPickingTexture();
 
     	#pragma region DrawAxis
 
-		zeroObject->UpdateConstantView(Renderer, *Camera);
-    	Renderer.PrepareLine();
-    	
-		Renderer.RenderPrimitive(VertexBufferAxisX, ARRAYSIZE(AxisXVertices));
-    	Renderer.RenderPrimitive(VertexBufferAxisY, ARRAYSIZE(AxisYVertices));
-    	Renderer.RenderPrimitive(VertexBufferAxisZ, ARRAYSIZE(AxisZVertices));
+		// zeroObject->UpdateConstantView(Renderer, *Camera);
+  //   	Renderer.PrepareLine();
+  //   	
+		// Renderer.RenderPrimitive(VertexBufferAxisX, ARRAYSIZE(AxisXVertices));
+  //   	Renderer.RenderPrimitive(VertexBufferAxisY, ARRAYSIZE(AxisYVertices));
+  //   	Renderer.RenderPrimitive(VertexBufferAxisZ, ARRAYSIZE(AxisZVertices));
     	
 #pragma endregion DrawAxis
 
@@ -371,16 +378,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         	ImGui::SliderFloat("CamRotationY", &Camera->Rotation.Y, -180.0f, 180.0f);
         	ImGui::SliderFloat("CamRotationZ", &Camera->Rotation.Z, -180.0f, 180.0f);
         	
-        	if (ImGui::InputInt("Number of Ball", &NumOfBalls))
+        	if (ImGui::InputInt("Number of Ball", &Renderer.ObjCount))
         	{
-        		NumOfBalls = max(NumOfBalls, 1);
-        		const int Diff = NumOfBalls - ArrSize;
+        		Renderer.ObjCount = max(Renderer.ObjCount, 1);
+        		const int Diff = Renderer.ObjCount - ArrSize;
         		if (Diff > 0)
 		        {
-			        if (NumOfBalls > ArrCap)
+			        if (Renderer.ObjCount > ArrCap)
 			        {
-			        	int NewCap = NumOfBalls > ArrCap * 2
-			        		? static_cast<int>(static_cast<float>(NumOfBalls) * 1.5f)
+			        	int NewCap = Renderer.ObjCount > ArrCap * 2
+			        		? static_cast<int>(static_cast<float>(Renderer.ObjCount) * 1.5f)
 			        		: ArrCap * 2;
 
 			        	UObject** NewBalls = new UObject*[NewCap];
@@ -399,7 +406,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 			        	Ball->bApplyGravity = Balls[0]->bApplyGravity;
 				        Balls[ArrSize + i] = Ball;
 			        }
-        			ArrSize = NumOfBalls;
+        			ArrSize = Renderer.ObjCount;
 		        }
 		        else if (Diff < 0)
         		{

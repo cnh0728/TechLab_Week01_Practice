@@ -19,6 +19,7 @@ struct VS_INPUT
 {
     float4 position : POSITION; // Input position from vertex buffer
     float4 color : COLOR; // Input color from vertex buffer
+    matrix MVP : WORLD;
 };
 
 struct PS_INPUT
@@ -38,10 +39,11 @@ PS_INPUT mainVS(VS_INPUT input)
     // 상수버퍼를 통해 넘겨 받은 Scale을 곱하고 Offset을 더해서 픽셀쉐이더로 넘김
 
     //월드 뷰 프로젝션 행렬을 곱해준다 TranslationMatrix 
-    output.position = mul(input.position, World);
-    output.position = mul(output.position, View);
-    output.position = mul(output.position, Proj);
-
+    // output.position = mul(input.position, World);
+    // output.position = mul(output.position, View);
+    // output.position = mul(output.position, Proj);
+    output.position = mul(input.position, input.MVP);
+    
     output.depth = output.position.z / output.position.w;
     //output.position = float4(input.position.xyz * Scale + Offset, input.position.w);
     // Pass the color to the pixel shader
